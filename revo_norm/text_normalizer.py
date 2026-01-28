@@ -49,6 +49,66 @@ def convert_emails_to_spoken(text: str) -> str:
     return _EMAIL_RE.sub(replace_email, text)
 
 
+def url_to_spoken(url: str) -> str:
+    """
+    Convert a URL/website into a spoken-friendly form for TTS.
+
+    Examples:
+        'www.google.com' -> 'w w w dot google dot com'
+        'http://192.168.1.1:8080/path' -> 'h t t p colon slash slash one nine two...'
+    """
+    spoken = url
+
+    # Replace protocol
+    spoken = re.sub(r'https?://', 'h t t p colon slash slash ', spoken)
+    spoken = re.sub(r'ftp://', 'f t p colon slash slash ', spoken)
+
+    # Replace www
+    spoken = re.sub(r'www\.?', 'w w w dot ', spoken)
+
+    # Replace remaining dots with " dot "
+    spoken = spoken.replace(".", " dot ")
+
+    # Replace slashes with " slash "
+    spoken = spoken.replace("/", " slash ")
+
+    # Replace ALL numbers with digit-by-digit speaking (for IP addresses and ports)
+    def speak_number_digits(match):
+        num = match.group(0)
+        return ' '.join(list(num))
+
+    # Match numbers (including those after "colon" from port processing)
+    spoken = re.sub(r'\d+', speak_number_digits, spoken)
+
+    # Replace hyphens with " dash "
+    spoken = spoken.replace("-", " dash ")
+
+    # Clean up extra spaces
+    spoken = re.sub(r'\s+', ' ', spoken).strip()
+
+    return spoken
+
+
+# URL regex pattern - matches www., http://, https://, ftp://, IPs, domains, and ports
+# Requires at least one letter in domain to avoid matching decimal numbers like 234.56
+_URL_RE = re.compile(
+    r'\b(?:https?://|ftp://|www\.)?(?:[A-Za-z0-9-]*[A-Za-z][A-Za-z0-9-]*(?:\.[A-Za-z0-9-]+)+|(?:\d{1,3}\.){3}\d{1,3})(?::\d+)?(?:/[^\s]*)?',
+    re.IGNORECASE
+)
+
+
+def convert_urls_to_spoken(text: str) -> str:
+    """
+    Find all URLs/websites in text and convert them to spoken form using regex.
+    This prevents messing up dots and slashes in other parts of the text.
+    """
+    def replace_url(match):
+        url = match.group(0)
+        return url_to_spoken(url)
+
+    return _URL_RE.sub(replace_url, text)
+
+
 def replace_letter_period_sequences(text: str) -> str:
     """Replace letter period sequences like 'I.B.M.' with 'I B M'."""
     def replacer(match):
@@ -248,6 +308,11 @@ def normalize_text(
     if not text or len(text) == 0:
         return ""
 
+    # Convert URLs and emails FIRST (before language-specific normalization)
+    # This prevents IP addresses in URLs from being processed as decimals
+    text = convert_urls_to_spoken(text)
+    text = convert_emails_to_spoken(text)
+
     # Apply pronunciation overrides
     if apply_pronunciation_overrides_flag:
         text = apply_pronunciation_overrides(text)
@@ -281,9 +346,6 @@ def normalize_text(
 
     # Insert comma after repeated words
     text = insert_comma_after_repeated_words(text, min_repeat=3)
-
-    # Convert email to spoken form
-    text = convert_emails_to_spoken(text)
 
     # Apply special character replacements
     text = special_replace(text, language)
