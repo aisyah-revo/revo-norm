@@ -59,12 +59,19 @@ def url_to_spoken(url: str) -> str:
     """
     spoken = url
 
-    # Replace protocol
+    # Replace protocol FIRST (before touching numbers)
     spoken = re.sub(r'https?://', 'h t t p colon slash slash ', spoken)
     spoken = re.sub(r'ftp://', 'f t p colon slash slash ', spoken)
 
     # Replace www
     spoken = re.sub(r'www\.?', 'w w w dot ', spoken)
+
+    # Handle port numbers separately (before general processing)
+    def replace_port(match):
+        port = match.group(1)
+        port_digits = ' '.join(list(port))
+        return f' colon {port_digits}'
+    spoken = re.sub(r':(\d+)', replace_port, spoken)
 
     # Replace remaining dots with " dot "
     spoken = spoken.replace(".", " dot ")
@@ -72,12 +79,11 @@ def url_to_spoken(url: str) -> str:
     # Replace slashes with " slash "
     spoken = spoken.replace("/", " slash ")
 
-    # Replace ALL numbers with digit-by-digit speaking (for IP addresses and ports)
+    # Replace remaining numbers with digit-by-digit speaking (for IP addresses)
     def speak_number_digits(match):
         num = match.group(0)
         return ' '.join(list(num))
 
-    # Match numbers (including those after "colon" from port processing)
     spoken = re.sub(r'\d+', speak_number_digits, spoken)
 
     # Replace hyphens with " dash "
