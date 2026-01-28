@@ -169,7 +169,7 @@ def apply_pronunciation_overrides(text: str) -> str:
     text = re.sub(r'\ba/p\b', 'anak perempuan', text, flags=re.IGNORECASE)
     text = re.sub(r'\b1Malaysia\b', 'satu malaysia', text, flags=re.IGNORECASE)
     text = re.sub(r'\bNo\.\b', 'number', text, flags=re.IGNORECASE)
-    text = text.replace("/", " strok ")
+    # Don't replace "/" here - let date regex handle dates like 12/03/2025
 
     unit_map = {
         "mg": "milligram",
