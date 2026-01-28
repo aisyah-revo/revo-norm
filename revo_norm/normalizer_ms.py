@@ -30,8 +30,10 @@ _decimal_re = re.compile(r'\b(\d+)\.(\d+)\b')
 _dashed_digit_re = re.compile(r'(?<![A-Za-z])([+\d]+(?:-[\d]+)+)(?![A-Za-z])')
 _alnum_re = re.compile(r'\b[\w\-]+\b')
 _number_re = re.compile(r'\b\d+\b')
+_number_with_commas_re = re.compile(r'\b\d{1,3}(?:,\d{3})+\b')
 _percentage_re = re.compile(r'\b(\d+(?:\.\d+)?)%')
 _time_re = re.compile(r'\b(\d{1,2})[:\.](\d{2})\s*(?:(am|pm|a\.m\.|p\.m\.|malam|petang))', re.IGNORECASE)
+_time_no_meridian_re = re.compile(r'\b(\d{1,2})[:\.](\d{2})\b(?!\s*(?:am|pm|a\.m\.|p\.m\.|malam|petang))(?!.*%)', re.IGNORECASE)
 
 
 def is_mixed_alnum(token):
@@ -46,7 +48,9 @@ def normalize_percentage(m):
     number = m.group(1)
     if '.' in number:
         whole, frac = number.split('.')
-        return f"{num2word(int(whole))} perpuluhan {num2word(int(frac))} peratus"
+        # Handle multi-digit decimals by speaking each digit
+        frac_words = ' '.join(num2word(int(digit)) for digit in frac)
+        return f"{num2word(int(whole))} perpuluhan {frac_words} peratus"
     else:
         return f"{num2word(int(number))} peratus"
 
@@ -67,6 +71,28 @@ def normalize_time(m):
         return f"{hour_word} {meridian_word}".strip()
     else:
         return f"{hour_word} {minute_word} {meridian_word}".strip()
+
+
+def normalize_time_no_meridian(m):
+    """Normalize time without meridian (e.g., 17:30, 09:00)."""
+    hour, minute = m.groups()
+    hour_int = int(hour)
+    minute_int = int(minute)
+
+    # Special case for midnight (00:00)
+    if hour_int == 0 and minute_int == 0:
+        return "tengah malam"
+    # Special case for noon (12:00)
+    if hour_int == 12 and minute_int == 0:
+        return "tengah hari"
+
+    hour_word = num2word(hour_int)
+    minute_word = num2word(minute_int)
+
+    if minute_word == 'kosong':
+        return hour_word
+    else:
+        return f"{hour_word} {minute_word}"
 
 
 def normalize_date(m):
@@ -104,7 +130,17 @@ def normalize_currency(m):
 
 
 def normalize_decimal(m):
-    return f"{num2word(int(m.group(1)))} perpuluhan {num2word(int(m.group(2)))}"
+    whole, frac = m.group(1), m.group(2)
+    # Handle multi-digit decimals by speaking each digit
+    frac_words = ' '.join(num2word(int(digit)) for digit in frac)
+    return f"{num2word(int(whole))} perpuluhan {frac_words}"
+
+
+def normalize_number_with_commas(m):
+    """Normalize numbers with commas like 1,000,000 or 7,832."""
+    num_str = m.group(0).replace(',', '')
+    num = int(num_str)
+    return num2word(num)
 
 
 def normalize_dashed_digits(m):
@@ -117,7 +153,26 @@ def normalize_mixed_alnum(m):
     if is_only_digits_and_dashes(token):
         return token
     if is_mixed_alnum(token):
-        return ' '.join(numbers_mapping_malay.get(ch, ch.upper()) for ch in token if ch.isalnum())
+        # Handle tokens like v2.3.1 - split on dots and process each part
+        if '.' in token and not re.match(r'^[A-Za-z]', token):
+            # Handle cases like 2.3.1 (starts with digit)
+            return ' '.join(numbers_mapping_malay.get(ch, ch.upper()) for ch in token if ch.isalnum())
+        elif '.' in token:
+            # Handle cases like v2.3.1 (starts with letter)
+            parts = token.split('.')
+            result = []
+            for i, part in enumerate(parts):
+                if part.isalpha():
+                    result.append(part.upper())
+                elif part.isdigit():
+                    result.append(num2word(int(part)))
+                elif part:  # mixed alnum like INV
+                    result.append(' '.join(numbers_mapping_malay.get(ch, ch.upper()) for ch in part if ch.isalnum()))
+                if i < len(parts) - 1:  # Add "perpuluhan" between parts
+                    result.append("perpuluhan")
+            return ' '.join(result)
+        else:
+            return ' '.join(numbers_mapping_malay.get(ch, ch.upper()) for ch in token if ch.isalnum())
     return token
 
 
@@ -132,10 +187,12 @@ def normalize_malay(text: str) -> str:
     """Main Malay text normalization function."""
     text = re.sub(_date_re, normalize_date, text)
     text = re.sub(_currency_re, normalize_currency, text)
+    text = re.sub(_time_no_meridian_re, normalize_time_no_meridian, text)
     text = re.sub(_time_re, normalize_time, text)
     text = re.sub(_percentage_re, normalize_percentage, text)
     text = re.sub(_decimal_re, normalize_decimal, text)
     text = re.sub(_dashed_digit_re, normalize_dashed_digits, text)
-    text = re.sub(_alnum_re, normalize_mixed_alnum, text)
+    text = re.sub(_number_with_commas_re, normalize_number_with_commas, text)
     text = re.sub(_number_re, normalize_number, text)
+    text = re.sub(_alnum_re, normalize_mixed_alnum, text)
     return text

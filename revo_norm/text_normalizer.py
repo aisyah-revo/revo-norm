@@ -20,10 +20,33 @@ def email_to_spoken(email: str) -> str:
         -> 'sugumaran underscore thiagarajan at yahoo dot com'
     """
     spoken = email.replace("@", " at ")
-    spoken = spoken.replace(".com", " dot com")
+    # Replace all dots with " dot " (not just .com)
+    spoken = spoken.replace(".", " dot ")
     spoken = spoken.replace("_", " underscore ")
     spoken = spoken.replace("+", " plus ")
+    # Replace hyphen with " dash " in emails
+    spoken = spoken.replace("-", " dash ")
+
     return re.sub(r"\s+", " ", spoken).strip()
+
+
+# Email regex pattern
+_EMAIL_RE = re.compile(
+    r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+    re.IGNORECASE
+)
+
+
+def convert_emails_to_spoken(text: str) -> str:
+    """
+    Find all email addresses in text and convert them to spoken form using regex.
+    This prevents messing up dots in other parts of the text.
+    """
+    def replace_email(match):
+        email = match.group(0)
+        return email_to_spoken(email)
+
+    return _EMAIL_RE.sub(replace_email, text)
 
 
 def replace_letter_period_sequences(text: str) -> str:
@@ -162,11 +185,14 @@ def apply_pronunciation_overrides(text: str) -> str:
     return text
 
 
-def special_replace(text: str) -> str:
+def special_replace(text: str, language: str = 'en') -> str:
     """
     Special character and punctuation normalization.
     This function replaces special characters with spoken equivalents.
     """
+    # Language-specific replacements
+    percent_word = 'percent' if language == 'en' else 'peratus'
+
     replacements = {
         '&': 'and',
         '+': 'plus',
@@ -174,7 +200,7 @@ def special_replace(text: str) -> str:
         '@': 'at',
         '#': 'hash',
         '*': 'star',
-        '%': 'percent',
+        '%': percent_word,
         '$': 'dollar',
         'EUR': 'euro',
         'GBP': 'pound',
@@ -257,9 +283,9 @@ def normalize_text(
     text = insert_comma_after_repeated_words(text, min_repeat=3)
 
     # Convert email to spoken form
-    text = email_to_spoken(text).strip()
+    text = convert_emails_to_spoken(text)
 
     # Apply special character replacements
-    text = special_replace(text)
+    text = special_replace(text, language)
 
     return text

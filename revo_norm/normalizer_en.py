@@ -80,8 +80,10 @@ _dashed_digit_re = re.compile(r'(?<![A-Za-z])([+\d]+(?:-[\d]+)+)(?![A-Za-z])')
 _ordinal_re = re.compile(r'\b(\d{1,2})(st|nd|rd|th)\b', re.IGNORECASE)
 _mixed_alnum_re = re.compile(r'\b(?=\w*\d)(?=\w*[A-Za-z])[\w\-]+\b')
 _number_re = re.compile(r'\b\d+\b')
+_number_with_commas_re = re.compile(r'\b\d{1,3}(?:,\d{3})+\b')
 _date_re = re.compile(r'\b(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\b')
 _time_re = re.compile(r'\b(\d{1,2})[:\.](\d{2})\s*(?:(am|pm|a\.m\.|p\.m\.))', re.IGNORECASE)
+_time_no_meridian_re = re.compile(r'\b(\d{1,2})[:\.](\d{2})\b(?!\s*(?:am|pm|a\.m\.|p\.m\.))(?!.*%)', re.IGNORECASE)
 
 # Create ignore words set
 IGNORE_WORDS = set()
@@ -111,6 +113,28 @@ def normalize_time(m):
         return f"{hour_word} {meridian_word}".strip()
     else:
         return f"{hour_word} {minute_word} {meridian_word}".strip()
+
+
+def normalize_time_no_meridian(m):
+    """Normalize time without meridian (e.g., 17:30, 09:00)."""
+    hour, minute = m.groups()
+    hour_int = int(hour)
+    minute_int = int(minute)
+
+    # Special case for midnight (00:00)
+    if hour_int == 0 and minute_int == 0:
+        return "midnight"
+    # Special case for noon (12:00)
+    if hour_int == 12 and minute_int == 0:
+        return "noon"
+
+    hour_word = _inflect.number_to_words(hour_int)
+    minute_word = _inflect.number_to_words(minute_int)
+
+    if minute_word == 'zero':
+        return hour_word
+    else:
+        return f"{hour_word} {minute_word}"
 
 
 def expand_contractions(text, lang="en"):
@@ -210,17 +234,26 @@ def normalize_number(m):
         return _inflect.number_to_words(int(m.group(0)))
 
 
+def normalize_number_with_commas(m):
+    """Normalize numbers with commas like 1,000,000 or 7,832."""
+    num_str = m.group(0).replace(',', '')
+    num = int(num_str)
+    return _inflect.number_to_words(num)
+
+
 def text_normalize(text: str) -> str:
     """Main English text normalization function."""
     text = re.sub(_date_re, normalize_date, text)
     text = re.sub(_currency_re, normalize_currency, text)
+    text = re.sub(_time_no_meridian_re, normalize_time_no_meridian, text)
     text = re.sub(_time_re, normalize_time, text)
     text = re.sub(_percentage_re, normalize_percentage, text)
     text = re.sub(_decimal_re, normalize_decimal, text)
     text = re.sub(_dashed_digit_re, normalize_dashed_digits, text)
     text = re.sub(_ordinal_re, normalize_ordinal, text)
-    text = re.sub(_mixed_alnum_re, normalize_mixed_alnum, text)
+    text = re.sub(_number_with_commas_re, normalize_number_with_commas, text)
     text = re.sub(_number_re, normalize_number, text)
+    text = re.sub(_mixed_alnum_re, normalize_mixed_alnum, text)
     text = expand_contractions(text)
     text = expand_abbreviations(text)
     text = re.sub(r'\s+', ' ', text).strip()
